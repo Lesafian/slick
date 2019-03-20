@@ -30,6 +30,8 @@ Hardware Setup:
 
 public class Elbow extends TalonSRX {
 
+    private double feedFwdVoltage = 0.05;
+    private boolean extended = false;
 
     public Elbow(int i) {
         super(i);
@@ -42,7 +44,6 @@ public class Elbow extends TalonSRX {
         super.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative,0,0);
         super.setSensorPhase(false);
 
-        super.setStatusFramePeriod(StatusFrameEnhanced.Status_13_Base_PIDF0, 10, 0);
         super.setStatusFramePeriod(StatusFrameEnhanced.Status_10_MotionMagic, 10, 0);
         
         super.selectProfileSlot(0,0);
@@ -53,27 +54,38 @@ public class Elbow extends TalonSRX {
 
         super.configNominalOutputForward(0, 0);
 		super.configNominalOutputReverse(0, 0);
-		super.configPeakOutputForward(.5, 0);
-		super.configPeakOutputReverse(-.5, 0);
+		super.configPeakOutputForward(.7, 0);
+		super.configPeakOutputReverse(-.7, 0);
 
-        super.configMotionAcceleration(300);
-        super.configMotionCruiseVelocity(300);
+        super.configMotionAcceleration(1700);
+        super.configMotionCruiseVelocity(1500);
+        super.configMotionSCurveStrength(8);
 
-        super.setSelectedSensorPosition(0, 0, 0);
+        super.setSelectedSensorPosition(0,0,0);
     }
 
     public double getFeedForward() {
         double feedfwd = (super.getSelectedSensorPosition() - Constants.kElbowParallelForward) / ((Constants.kElbowParallelReverse - Constants.kElbowParallelForward) / Math.PI);
-        System.out.println("Feed Forward Angle (Rad): " + feedfwd);
+        System.out.println(feedfwd);
         return feedfwd;
     }
 
     public void moveTo(double target) {
+        System.out.println(target);
+        if (extended) {
+            feedFwdVoltage = 0.08;
+        } else {
+            feedFwdVoltage = 0.05;
+        }
         super.set(ControlMode.MotionMagic, target, DemandType.ArbitraryFeedForward, 0.05 * Math.cos(getFeedForward()));
     }
 
     public void stop() {
         super.set(ControlMode.PercentOutput, 0);
+    }
+
+    public void setExtended(boolean extended) {
+        this.extended = extended;
     }
 
     public void display() {

@@ -52,7 +52,7 @@ public class Xbox extends XboxController {
 			return false;
 		}
 	}
-	
+
 	public boolean yAxisExceedsThreshold(Hand hand) {
 		if (Math.abs(getY(hand)) > threshold) {
 			return true;

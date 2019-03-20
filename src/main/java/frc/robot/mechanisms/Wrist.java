@@ -48,7 +48,9 @@ public class Wrist extends TalonSRX {
 
         super.configAllowableClosedloopError(0, 5);
 
-        super.setSelectedSensorPosition(0, 0, 0);
+        super.setSelectedSensorPosition(super.getSensorCollection().getPulseWidthPosition(), 0, 0);
+
+        super.configMotionSCurveStrength(1);
     }
 
     public void moveTo(double target) {

@@ -1,19 +1,19 @@
-
 package frc.robot;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.NeutralMode;
 import com.ctre.phoenix.motorcontrol.can.VictorSPX;
 
+import edu.wpi.first.networktables.NetworkTableEntry;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.Compressor;
-import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.GenericHID.Hand;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.constants.CAN;
 import frc.robot.constants.Constants;
 import frc.robot.mechanisms.Elbow;
-import frc.robot.mechanisms.Wrist;
+import frc.robot.mechanisms.Intake;
 import frc.robot.subsystems.Arm;
 import frc.robot.subsystems.Climber;
 import frc.robot.subsystems.DriveTrain;
@@ -21,47 +21,52 @@ import frc.robot.subsystems.Lift;
 
 public class Robot extends TimedRobot {
 
-  private Xbox controller;
+  private Xbox tyler;
+  private PS4 jarm;
 
   private Compressor compressor;
   private DriveTrain drive;
   private Climber climber;
   private Elbow elbow;
-  private Wrist wrist;
   private Arm arm;
   private Lift lift;
-
+  private Intake intake;
   private VictorSPX liftSlave, climberSlave;
 
   private byte position = 0;
   private double feedFwd = 0;
 
-  private boolean xPressed = false;
-  private boolean yPressed = false;
-  private boolean bPressed = false;
-  private boolean bumperPressed = false;
-  private boolean back = true;
+  private double turn = 0;
 
-  private boolean hatchPanel = true;
+  private boolean climbStateFront = false;
+  private boolean climbStateBack = false;
+
+  private NetworkTableEntry cam;
+
+  private boolean back = false;
   private boolean ground = false;
-  private Mode mode = Mode.CARGO;
+  private Mode mode = Mode.HATCH_PANEL;
 
   @Override
   public void robotInit() {
 
-    controller = new Xbox(0);
-    controller.setThreshold(Constants.kJoystickThreshold);
+    jarm = new PS4(0);
+    jarm.setThreshold(Constants.kJoystickThreshold);
+
+    tyler = new Xbox(1);
+    tyler.setThreshold(Constants.kJoystickThreshold);
 
     drive = new DriveTrain(CAN.kFrontLeft, CAN.kMidLeft, CAN.kBackLeft, CAN.kFrontRight, CAN.kMidRight, CAN.kBackRight);
 
     elbow = new Elbow(CAN.kElbow);
-    wrist = new Wrist(CAN.kWrist);
-    arm = new Arm(elbow, wrist);
+    arm = new Arm(elbow);
+    intake = new Intake(CAN.kIntakeLeft, CAN.kIntakeRight);
+
 
     lift = new Lift(CAN.kLiftMaster);
     liftSlave = new VictorSPX(CAN.kLiftSlave);
     liftSlave.setNeutralMode(NeutralMode.Brake);
-    liftSlave.setInverted(true);
+    liftSlave.setInverted(false);
     liftSlave.follow(lift);
 
     climber = new Climber(CAN.kClimberMaster);
@@ -69,9 +74,11 @@ public class Robot extends TimedRobot {
     climberSlave.setNeutralMode(NeutralMode.Brake);
     climberSlave.follow(climber);
 
-    compressor = new Compressor();
+    compressor = new Compressor(CAN.kPCM_24);
     compressor.setClosedLoopControl(true);
     compressor.start();
+
+    cam = NetworkTableInstance.getDefault().getTable("SlickVision").getEntry("Cam");
 
   }
 
@@ -82,125 +89,129 @@ public class Robot extends TimedRobot {
 
   @Override
   public void autonomousInit() {
+    compressor.start();
   }
 
+  // ctrl + shift + p
   @Override
   public void autonomousPeriodic() {
     display();
 
-    /*
-    Using this method as a secondary teleop for mechanism testing
-      code in here is irrelevant
-    */
-
-    if (controller.getBumper(Hand.kLeft)) {
-      if (controller.getBButton()) {
-        wrist.moveTo(Constants.kWristParallel);
-        elbow.moveTo(Constants.kElbowParallelForward);
-      } else if (controller.getXButton()) {
-        elbow.moveTo(Constants.kElbowVertical);
-        wrist.moveTo(Constants.kWristParallel);
-      } else {
-        elbow.stop();
-        wrist.stop();
-      }
-      System.out
-          .println("Wrist out: " + wrist.getMotorOutputPercent() + "- Elbow out: " + elbow.getMotorOutputPercent());
-    } else if (controller.getBumper(Hand.kRight)) {
-      if (controller.yAxisExceedsThreshold(Hand.kRight)) {
-        elbow.set(ControlMode.PercentOutput, controller.getY(Hand.kRight) * .3);
+    if (jarm.getBumper(Hand.kLeft)) {
+      if (jarm.yAxisExceedsThreshold(Hand.kLeft)) {
+        elbow.set(ControlMode.PercentOutput, jarm.getY(Hand.kLeft) * .6);
       } else {
         elbow.stop();
       }
     } else {
-      wrist.stop();
       elbow.stop();
     }
-
-    if (controller.getYButton()) {
-      arm.extend();
-    } else if (controller.getXButton()) {
-      arm.retract();
-    }
-
   }
 
   @Override
   public void teleopInit() {
-    drive.resetGyro();
+   // drive.resetGyro();
+    compressor.start();
   }
 
   @Override
   public void teleopPeriodic() {
+
     display();
-    if (controller.joysticksExceedThreshold()) {
-      drive.arcadeDrive(controller.getY(Hand.kLeft), -controller.getX(Hand.kRight), controller.getThreshold());
+
+    /*
+     * 
+     * JARMS CONTROLS
+     * 
+     */
+
+    // use vision if button is pressed
+    
+    if (jarm.getXButton()) {
+      turn = drive.getAssistedTurnOnce();
+    } else {
+      drive.resetAssistance();
+      turn = -jarm.getRawAxis(2);
+    }
+
+    // drive train code
+    if (jarm.joysticksExceedThreshold()) {
+      drive.arcadeDrive(jarm.getY(Hand.kLeft), turn, jarm.getThreshold());
     } else {
       drive.stopDriving();
     }
 
-
-    // toggle hatch panel mode; true = hatch panel, false = cargo
-    if (controller.getXButton()) {
-      if (!xPressed) {
-        hatchPanel = !hatchPanel;
-        xPressed = true;
-      }
-    } else {
-      xPressed = false;
+    // shift drive train
+    if (jarm.getStickButton(Hand.kLeft)) {
+      drive.lowGear();
+    } else if (jarm.getStickButton(Hand.kRight)) {
+      drive.highGear();
     }
-    if (hatchPanel) {
-      mode = Mode.HATCH_PANEL;
-    } else {
-      mode = mode.CARGO;
-    }
-
-
-    // toggle floor pickup or load station pickup; applies only to hatch panels
-    if (controller.getYButton()) {
-      if (!yPressed) {
-        ground = !ground;
-        xPressed = true;
-      }
-    } else {
-      yPressed = false;
-    }
-
-
-    /* controls the positions of the subsystems
     
-    Bottom = Climb / Defense
-    Pickup = Cargo / Hatch Panel Floor / Hatch Panel Loading Station
-    Level 1 = Level 1 Placement
-    Level 2 = Level 2 Placement
-    Level 3 = Level 3 Placement
-
-    */
-    if (controller.getBumper(Hand.kRight)) {
-      if (!bumperPressed && position < 4) {
-        position++;
-        bumperPressed = true;
-      }
-    } else if (controller.getBumper(Hand.kLeft)) {
-      if (!bumperPressed && position > 1) {
-        position--;
-        bumperPressed = true;
-      }
-    } else if (controller.getBumper(Hand.kLeft) && controller.getPOV() == 90) {
-      if (position == 1) {
-        position = 0;
-      }
-    } else {
-      bumperPressed = false;
+    // game piece mode
+    if (jarm.getBumper(Hand.kLeft)) {
+      mode = Mode.HATCH_PANEL;
+    } else if (jarm.getBumper(Hand.kRight)) {
+      mode = Mode.CARGO;
     }
 
-    if (controller.getBButton()) {
-      if (bPressed == false) {
-        back = !back;
-        bPressed = true;
+    // intake
+    if (jarm.getRawButton(8)) {
+      if (mode == Mode.HATCH_PANEL) {
+        intake.autoHatchIntake();
+      } else {
+        intake.autoCargoIntake(0.8);
+      }
+    } else if (jarm.getRawButton(7)) {
+      if (mode == Mode.HATCH_PANEL) {
+        intake.close();
+      } else {
+        intake.shoot(0.8);
+        intake.close();
       }
     } else {
-      bPressed = false;
+      intake.stop();
+    }
+/*
+    if (jarm.getSharePressed()) {
+      climbStateBack = !climbStateBack;
+    } 
+    if (jarm.getOptionsPressed()) {
+      climbStateFront = !climbStateFront;
+    }
+    if (climbStateBack) {
+      climber.setBack(DoubleSolenoid.Value.kForward);
+    } else {
+      climber.setBack(DoubleSolenoid.Value.kReverse);
+    }
+
+    if (climbStateFront) {
+      climber.setFront(DoubleSolenoid.Value.kForward);
+    } else {
+      climber.setFront(DoubleSolenoid.Value.kReverse);
+    }
+
+*/
+    if (tyler.getAButtonPressed()) {
+      back = !back;
+    }
+
+    if (back) {
+      cam.setValue(0);
+    } else {
+      cam.setValue(1);
+    }
+
+    if (tyler.getBumper(Hand.kRight)) {
+      position = 3;
+    } else if (tyler.getBumper(Hand.kLeft)) {
+      position = 4;
+    } else if (tyler.triggerExceedsThreshold(Hand.kRight)) {
+      position = 1;
+    } else if (tyler.triggerExceedsThreshold(Hand.kLeft)) {
+      position = 2;
+    } else if (tyler.getBButton()) {
+      position = 0;
     }
 
     if (position == 0) {
@@ -218,8 +229,8 @@ public class Robot extends TimedRobot {
   }
 
   private void move(Position position) {
-    lift.moveTo(mode, ground, position);
-    arm.moveTo(mode, back, ground, lift.getSelectedSensorPosition(), position);
+    lift.moveTo(mode, position);
+    arm.moveTo(mode, back, position);
   }
 
   @Override
@@ -230,21 +241,21 @@ public class Robot extends TimedRobot {
   @Override
   public void testPeriodic() {
     display();
-    if (controller.yAxisExceedsThreshold(Hand.kLeft)) {
-      elbow.set(ControlMode.PercentOutput, controller.getY(Hand.kLeft) * .3);
+    if (jarm.yAxisExceedsThreshold(Hand.kLeft)) {
+      elbow.set(ControlMode.PercentOutput, jarm.getY(Hand.kLeft) * .3);
     } else {
       elbow.stop();
     }
 
-    if (controller.yAxisExceedsThreshold(Hand.kRight)) {
-      wrist.set(ControlMode.PercentOutput, controller.getY(Hand.kRight) * .3);
+    if (jarm.yAxisExceedsThreshold(Hand.kRight)) {
+      // wrist.set(ControlMode.PercentOutput, controller.getY(Hand.kRight) * .3);
     } else {
-      wrist.stop();
+      // rist.stop();
     }
 
-    if (controller.triggerExceedsThreshold(Hand.kLeft)) {
+    if (jarm.triggerExceedsThreshold(Hand.kLeft)) {
       climber.climb(-.7);
-    } else if (controller.triggerExceedsThreshold(Hand.kRight)) {
+    } else if (jarm.triggerExceedsThreshold(Hand.kRight)) {
       climber.climb(.7);
     } else {
       climber.stop();
@@ -253,13 +264,11 @@ public class Robot extends TimedRobot {
   }
 
   public void display() {
-    SmartDashboard.putNumber("Position", position);
     SmartDashboard.putBoolean("Back", back);
-
-    elbow.display();
-    wrist.display();
-    drive.display();
-    lift.display();
+    SmartDashboard.putNumber("Lift Slave Motor Voltage", liftSlave.getMotorOutputVoltage());
+   // drive.display();
+   elbow.display();
+   intake.display();
   }
 
 }

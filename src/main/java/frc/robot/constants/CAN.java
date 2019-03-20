@@ -4,12 +4,16 @@ package frc.robot.constants;
 public class CAN {
 
     public static int kElbow = 1;
-    public static int kWrist = 2;
-    public static int kIntake = 3;
+    //public static int kWrist = 2;
+    public static int kIntakeLeft = 20;
+    public static int kIntakeRight = 21;
     public static int kClimberMaster = 4;
     public static int kClimberSlave = 5;
-    public static int kLiftMaster = 12;
-    public static int kLiftSlave = 13;
+   // public static int kLiftMaster = 12;
+    //public static int kLiftSlave = 13;
+
+    public static int kLiftMaster = 30;
+    public static int kLiftSlave = 31;
 
     //Left side of drive train
     public static int kFrontLeft = 6;

@@ -28,37 +28,38 @@ public class Lift extends TalonSRX {
         super.config_kD(0, Gains.kLiftD);
         super.config_kF(0, Gains.kLiftF);
 
-        super.setInverted(true);
+        super.setInverted(false);
 
-        super.setSensorPhase(true);
-        super.configMotionAcceleration(5000);
-        super.configMotionCruiseVelocity(8000);
+        super.setSensorPhase(false);
+        super.configMotionAcceleration(13000);
+        super.configMotionCruiseVelocity(15000);
+        super.configMotionSCurveStrength(4);
 
         super.setNeutralMode(NeutralMode.Brake);
 
-        super.configReverseSoftLimitEnable(true);
-        super.configForwardSoftLimitEnable(true);
-        super.configReverseSoftLimitThreshold(-1000);
-        super.configForwardSoftLimitThreshold(40000);
+        super.configReverseSoftLimitEnable(false);
+        super.configForwardSoftLimitEnable(false);
 
         super.configAllowableClosedloopError(0, 25);
+
+
     }
 
     private void move(double target) {
-        // .0625 = holding %vbus
+        // need to find stall %vbus
         if (pos == Position.BOTTOM && super.getSelectedSensorPosition() <= Constants.kLiftBottomThreshold) {
             stop();
         } else {
             if (target < super.getSelectedSensorPosition()) {
-                feedFwd = -0.125;
+                feedFwd = -0.1;
             } else {
-                feedFwd = 0.0625;
+                feedFwd = 0.01;
             }
             super.set(ControlMode.MotionMagic, target, DemandType.ArbitraryFeedForward, feedFwd);
         }
     }
 
-    public void moveTo(Mode mode, boolean ground,Position position) {
+    public void moveTo(Mode mode,Position position) {
         this.pos = position;
         switch(mode) {
             case HATCH_PANEL:
@@ -74,16 +75,18 @@ public class Lift extends TalonSRX {
             break;
         }
 
+        System.out.println(position.toString());
+
         switch (position) {
         case BOTTOM:
             move(Constants.kLiftBottom);
             break;
         case PICKUP:
-            if (!ground && mode == Mode.HATCH_PANEL) {
-                move(Constants.kLiftHatchPanelPickup);
+            if (mode == Mode.HATCH_PANEL) {
+                move(Constants.kLiftLevel1HatchPanel);
             } else {
                 move(Constants.kLiftBottom);
-            } 
+            }
             break;
         case LEVEL_1:
             move(level1);
@@ -121,9 +124,7 @@ public class Lift extends TalonSRX {
     
     public void display() {
         SmartDashboard.putNumber("Lift Position", super.getSelectedSensorPosition());
-        SmartDashboard.putNumber("Lift Velocity", super.getSelectedSensorVelocity());
-        SmartDashboard.putNumber("% Output", super.getMotorOutputPercent());
-        SmartDashboard.putNumber("Motor Voltage", super.getMotorOutputVoltage());
+        SmartDashboard.putNumber("Lift Master Motor Voltage", super.getMotorOutputVoltage());
         SmartDashboard.putNumber("Motor Current", super.getOutputCurrent());
     }
 
